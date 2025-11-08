@@ -255,10 +255,82 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/.git")
     endif(EXISTS "${PROJECT_SOURCE_DIR}/tools/hooks/")
 endif(EXISTS "${PROJECT_SOURCE_DIR}/.git")
 
-configure_file(
-    "${PROJECT_SOURCE_DIR}/build/cmake/version.in"
-    "${PROJECT_SOURCE_DIR}/mpp/version.h"
-)
+#configure_file(
+#    "${PROJECT_SOURCE_DIR}/build/cmake/version.in"
+#    "${PROJECT_SOURCE_DIR}/mpp/version.h"
+#)
+# --- Generate mpp/version.h directly (no template needed) ---
+find_package(Git QUIET)
+
+# Version string
+set(_MPP_VERSION "unknown")
+if(GIT_FOUND)
+  execute_process(
+    COMMAND "${GIT_EXECUTABLE}" describe --tags --dirty --always
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    OUTPUT_VARIABLE _MPP_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+endif()
+
+# Build the history list of exactly 10 entries: "<sha> <date> <subject>"
+set(_hist)
+if(GIT_FOUND)
+  execute_process(
+    COMMAND "${GIT_EXECUTABLE}" log -n 10 --pretty=%h\ %cs\ %s --no-decorate --no-merges
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    OUTPUT_VARIABLE _LOG_RAW
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+endif()
+
+if(_LOG_RAW)
+  string(REPLACE "\n" ";" _LOG_LINES "${_LOG_RAW}")
+else()
+  set(_LOG_LINES)
+endif()
+
+# Append up to 10 lines (quoted, with inner quotes escaped)
+set(_i 0)
+foreach(_L IN LISTS _LOG_LINES)
+  if(_i GREATER_EQUAL 10)
+    break()
+  endif()
+  string(REPLACE "\"" "\\\"" _L "${_L}")
+  list(APPEND _hist "\"${_L}\"")
+  math(EXPR _i "${_i}+1")
+endforeach()
+
+# Pad with "unknown" to 10
+while(_i LESS 10)
+  list(APPEND _hist "\"unknown\"")
+  math(EXPR _i "${_i}+1")
+endwhile()
+
+# Write header into the binary tree
+set(_VER_H "${CMAKE_BINARY_DIR}/mpp/version.h")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/mpp")
+file(WRITE  "${_VER_H}" "/* Auto-generated */\n#ifndef MPP_VERSION_H\n#define MPP_VERSION_H\n\n")
+file(APPEND "${_VER_H}" "#define MPP_VERSION \"${_MPP_VERSION}\"\n")
+file(APPEND "${_VER_H}" "#define MPP_VER_HIST_CNT 10\n")
+
+# Emit MPP_VER_HIST_0..9
+set(_idx 0)
+foreach(_H IN LISTS _hist)
+  file(APPEND "${_VER_H}" "#define MPP_VER_HIST_${_idx} ${_H}\n")
+  math(EXPR _idx "${_idx}+1")
+endforeach()
+
+file(APPEND "${_VER_H}" "\n#endif /* MPP_VERSION_H */\n")
+
+# Ensure sources can #include "version.h"
+include_directories("${CMAKE_BINARY_DIR}/mpp")
+
+
+
+
 
 # ----------------------------------------------------------------------------
 # Build options

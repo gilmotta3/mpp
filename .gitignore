@@ -89,3 +89,5 @@ Build
 #
 .vscode/
 .code-workspace
+/build/
+mpp/version.h
